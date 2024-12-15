@@ -1,0 +1,6 @@
+local:
+  document_generator: {}
+  interpreter: {}
+  openapi_action.OpenAPIActionToolSpec:
+    openapi_uri: The URL or file path of the OpenAPI schema
+llamahub: {}
