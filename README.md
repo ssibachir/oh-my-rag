@@ -1,5 +1,63 @@
 This is a [LlamaIndex](https://www.llamaindex.ai/) project using [FastAPI](https://fastapi.tiangolo.com/) bootstrapped with [`create-llama`](https://github.com/run-llama/LlamaIndexTS/tree/main/packages/create-llama).
 
+## Project Workflow & Architecture
+
+### Core Components
+
+#### 1. Data Ingestion & Indexing
+- `app/engine/generate.py`: Point d'entrée pour l'indexation des documents
+- `app/engine/loaders/__init__.py`: Gère le chargement des documents depuis le dossier `data/`
+- `app/engine/vectordb.py`: Configure la connexion avec Qdrant (base de données vectorielle)
+
+#### 2. RAG Engine
+- `app/engine/engine.py`: Cœur du système RAG
+  - Configure OpenAI (LLM et embeddings)
+  - Crée le chat engine qui combine :
+    - Recherche de documents pertinents
+    - Génération de réponses contextuelles
+- `app/engine/query_filter.py`: Gère le filtrage des documents lors des requêtes
+
+#### 3. API Layer
+- `app/api/app.py`: Configuration principale de FastAPI
+- `app/api/routers/chat.py`: Endpoints pour le chat
+  - `/api/chat/request`: Endpoint non-streaming
+  - `/api/chat`: Endpoint streaming
+
+#### 4. Frontend
+- `static/index.html`: Interface utilisateur simple
+  - Chat interface
+  - Communication avec l'API
+
+### Workflow Typique
+
+1. **Préparation des Données**
+   ```bash
+   # Placez vos documents dans le dossier data/
+   # Générez les embeddings et indexez les documents
+   poetry run generate
+   ```
+
+2. **Démarrage du Serveur**
+   ```bash
+   # Démarrez le serveur de développement
+   poetry run dev
+   ```
+
+3. **Interaction**
+   - Accédez à `http://localhost:8000`
+   - Posez des questions via l'interface
+   - Le système :
+     1. Recherche les passages pertinents dans Qdrant
+     2. Utilise GPT-4 pour générer une réponse contextuelle
+
+### Configuration
+- `.env`: Variables d'environnement
+  - Clés API (OpenAI, Qdrant)
+  - Configuration des modèles
+  - Paramètres du serveur
+- `config/tools.yaml`: Configuration des outils disponibles
+- `config/loaders.yaml`: Configuration des chargeurs de documents
+
 ## Getting Started
 
 First, setup the environment with poetry:

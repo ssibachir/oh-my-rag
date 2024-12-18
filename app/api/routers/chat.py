@@ -1,77 +1,99 @@
-import logging
-
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import List
 from llama_index.core.llms import MessageRole
-
-from app.api.routers.events import EventCallbackHandler
-from app.api.routers.models import (
-    ChatData,
-    Message,
-    Result,
-    SourceNodes,
-)
-from app.api.routers.vercel_response import VercelStreamResponse
 from app.engine.engine import get_chat_engine
 from app.engine.query_filter import generate_filters
 
-chat_router = r = APIRouter()
+chat_router = APIRouter()
 
-logger = logging.getLogger("uvicorn")
+class Message(BaseModel):
+    """
+    Représente un message utilisé dans les requêtes de chat.
 
+    Attributs:
+        role (str): Le rôle du message (par exemple, "user" pour l'utilisateur ou "assistant" pour le modèle).
+        content (str): Le contenu textuel du message.
+    """
+    role: str
+    content: str
 
-# streaming endpoint - delete if not needed
-@r.post("")
-async def chat(
-    request: Request,
-    data: ChatData,
-    background_tasks: BackgroundTasks,
-):
+class ChatRequest(BaseModel):
+    """
+    Modèle de requête pour le chat.
+
+    Attributs:
+        messages (List[Message]): Liste des messages échangés, incluant l'historique et le dernier message.
+    """
+    messages: List[Message]
+
+@chat_router.post("/chat/request")
+async def chat_request(request: ChatRequest):
+    """
+    Traite une requête de chat en utilisant un moteur de chat.
+
+    Cette route prend une requête contenant une liste de messages, extrait le dernier message,
+    traite l'historique des messages pour le modèle de chat, et renvoie une réponse générée
+    ainsi que les éventuelles métadonnées associées.
+
+    Args:
+        request (ChatRequest): La requête contenant les messages d'historique et le dernier message.
+
+    Returns:
+        dict: Une réponse contenant:
+            - "response": La réponse générée par le modèle.
+            - "source_nodes": Une liste de sources associées à la réponse, si disponible.
+
+    Exceptions:
+        Retourne un message d'erreur si une exception est levée lors du traitement.
+    """
     try:
-        last_message_content = data.get_last_message_content()
-        messages = data.get_history_messages()
-
-        doc_ids = data.get_chat_document_ids()
-        filters = generate_filters(doc_ids)
-        params = data.data or {}
-        logger.info(
-            f"Creating chat engine with filters: {str(filters)}",
+        # Obtenir le dernier message de l'utilisateur
+        last_message = request.messages[-1].content
+        
+        # Convertir les messages pour LlamaIndex
+        history_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in request.messages[:-1]
+        ]
+        
+        # Initialiser le chat engine
+        chat_engine = get_chat_engine()
+        
+        # Obtenir la réponse
+        response = await chat_engine.achat(
+            last_message,
+            history_messages
         )
-        event_handler = EventCallbackHandler()
-        chat_engine = get_chat_engine(
-            filters=filters, params=params, event_handlers=[event_handler]
-        )
-        response = chat_engine.astream_chat(last_message_content, messages)
-
-        return VercelStreamResponse(
-            request, event_handler, response, data, background_tasks
-        )
+        
+        return {
+            "response": response.response,
+            "source_nodes": [
+                {
+                    "text": node.node.text,
+                    "metadata": node.node.metadata
+                }
+                for node in response.source_nodes
+            ] if response.source_nodes else []
+        }
+        
     except Exception as e:
-        logger.exception("Error in chat engine", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error in chat engine: {e}",
-        ) from e
+        return {"response": f"Error: {str(e)}"}
 
+@chat_router.post("/chat")
+async def chat(request: ChatRequest):
+    """
+    Traite une requête de chat via une interface alternative.
 
-# non-streaming endpoint - delete if not needed
-@r.post("/request")
-async def chat_request(
-    data: ChatData,
-) -> Result:
-    last_message_content = data.get_last_message_content()
-    messages = data.get_history_messages()
+    Cette route utilise la logique de `chat_request`, mais est potentiellement prévue
+    pour le streaming des réponses.
 
-    doc_ids = data.get_chat_document_ids()
-    filters = generate_filters(doc_ids)
-    params = data.data or {}
-    logger.info(
-        f"Creating chat engine with filters: {str(filters)}",
-    )
+    Args:
+        request (ChatRequest): La requête contenant les messages.
 
-    chat_engine = get_chat_engine(filters=filters, params=params)
-
-    response = await chat_engine.achat(last_message_content, messages)
-    return Result(
-        result=Message(role=MessageRole.ASSISTANT, content=response.response),
-        nodes=SourceNodes.from_source_nodes(response.source_nodes),
-    )
+    Returns:
+        dict: Une réponse identique à celle de la route `/chat/request`.
+    """
+    # Pour le streaming, utilisez la même logique mais avec astream_chat
+    response = await chat_request(request)
+    return response

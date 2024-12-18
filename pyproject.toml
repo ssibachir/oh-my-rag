@@ -13,7 +13,7 @@ prod = "run:prod"
 build = "run:build"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.11,<3.13"
 fastapi = "^0.109.1"
 python-dotenv = "^1.0.0"
 pydantic = "<2.10"
@@ -21,14 +21,16 @@ aiostream = "^0.5.2"
 cachetools = "^5.3.3"
 llama-index = "^0.12.1"
 rich = "^13.9.4"
+llama-index-agent-openai = "^0.4.0"
+llama-index-tools-requests = "^0.3.0"
+llama-index-llms-openai = "^0.1.1"
 
 [tool.poetry.dependencies.uvicorn]
 extras = [ "standard" ]
 version = "^0.23.2"
 
 [tool.poetry.dependencies.llama-index-vector-stores-qdrant]
-version = "^0.4.0"
-python = ">=3.11,<3.13"
+version = "*"
 
 [tool.poetry.dependencies.docx2txt]
 version = "^0.8"
@@ -43,26 +45,16 @@ version = "^3.7"
 version = "0.0.11b38"
 
 [tool.poetry.dependencies.llama-index-tools-openapi]
-version = "0.2.0"
+version = "*"
 
 [tool.poetry.dependencies.jsonschema]
 version = "^4.22.0"
 
-[tool.poetry.dependencies.llama-index-tools-requests]
-version = "0.2.0"
-
-[tool.poetry.dependencies.llama-index-llms-openai]
-version = "^0.3.2"
-
 [tool.poetry.dependencies.llama-index-embeddings-openai]
-version = "^0.3.1"
-
-[tool.poetry.dependencies.llama-index-agent-openai]
-version = "^0.4.0"
+version = "*"
 
 [tool.poetry.dependencies.llama-index-callbacks-arize-phoenix]
 version = "^0.3.0"
-python = ">=3.11,<3.13"
 
 [tool.poetry.group]
 [tool.poetry.group.dev]
