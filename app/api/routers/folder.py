@@ -4,7 +4,9 @@ from typing import List, Set
 from pydantic import BaseModel
 import shutil
 from app.engine.generate import process_documents
+from app.engine.vectordb import get_vector_store, get_collection_stats
 import logging
+from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
 
@@ -165,15 +167,66 @@ async def debug_vectorstore():
     """
     try:
         vector_store = get_vector_store()
-        # Récupérer tous les documents
+        
+        # Récupérer les stats
+        stats = get_collection_stats(vector_store)
+        
+        # Récupérer les documents
         docs = vector_store.client.scroll(
             collection_name=os.getenv("QDRANT_COLLECTION"),
             limit=100
         )
+        
+        # Grouper par source
+        docs_by_source = {}
+        for doc in docs[0]:
+            source = doc.payload.get("metadata", {}).get("source", "unknown")
+            if source not in docs_by_source:
+                docs_by_source[source] = 0
+            docs_by_source[source] += 1
+        
         return {
-            "count": len(docs[0]),
+            "collection_stats": stats,
+            "documents_count": len(docs[0]),
+            "documents_by_source": docs_by_source,
             "documents": [doc.payload for doc in docs[0]]
         }
     except Exception as e:
+        logger.error(f"Erreur lors de la récupération des stats: {str(e)}")
         return {"error": str(e)}
+
+@folder_router.get("/folder/view/{filename}")
+async def view_file(filename: str):
+    """
+    Sert le fichier PDF pour la visualisation.
+    """
+    try:
+        # Nettoyer le nom du fichier de tout chemin potentiel
+        clean_filename = os.path.basename(filename)
+        file_path = os.path.join("data", clean_filename)
+        
+        logger.info(f"Tentative d'accès au fichier: {file_path}")
+        
+        if not os.path.exists(file_path):
+            logger.error(f"Fichier non trouvé: {file_path}")
+            raise HTTPException(status_code=404, detail=f"Fichier non trouvé: {clean_filename}")
+        
+        # Vérifier que c'est bien un PDF
+        if not clean_filename.lower().endswith('.pdf'):
+            logger.error(f"Format non supporté: {clean_filename}")
+            raise HTTPException(status_code=400, detail="Format de fichier non supporté")
+        
+        logger.info(f"Envoi du fichier PDF: {file_path}")
+        return FileResponse(
+            path=file_path,
+            media_type='application/pdf',
+            filename=clean_filename,
+            headers={
+                "Content-Disposition": f"inline; filename={clean_filename}",
+                "Content-Type": "application/pdf"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Erreur lors de l'accès au fichier: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 

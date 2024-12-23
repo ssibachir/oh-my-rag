@@ -1,9 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
+import json
+import logging
 from llama_index.core.llms import MessageRole
 from app.engine.engine import get_chat_engine
 from app.engine.query_filter import generate_filters
+import re  # Ajoutez cet import en haut du fichier
+
+# Initialisation du logger
+logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
 
@@ -83,17 +90,85 @@ async def chat_request(request: ChatRequest):
 @chat_router.post("/chat")
 async def chat(request: ChatRequest):
     """
-    Traite une requête de chat via une interface alternative.
-
-    Cette route utilise la logique de `chat_request`, mais est potentiellement prévue
-    pour le streaming des réponses.
-
-    Args:
-        request (ChatRequest): La requête contenant les messages.
-
-    Returns:
-        dict: Une réponse identique à celle de la route `/chat/request`.
+    Endpoint de chat qui retourne la réponse en streaming avec les références.
     """
-    # Pour le streaming, utilisez la même logique mais avec astream_chat
-    response = await chat_request(request)
-    return response
+    try:
+        user_message = request.messages[-1].content
+        chat_engine = get_chat_engine()
+        
+        async def generate_response():
+            streaming_response = chat_engine.stream_chat(user_message)
+            
+            # Trouver la meilleure source
+            best_source = None
+            logger.debug("Recherche des sources pertinentes...")
+            
+            if (hasattr(streaming_response, 'source_nodes') and 
+                streaming_response.source_nodes):
+                # Log de tous les scores trouvés
+                for node in streaming_response.source_nodes:
+                    logger.debug(f"Score trouvé: {node.score * 100:.1f}% pour {node.node.metadata.get('source', 'unknown')}")
+                
+                best_source = max(streaming_response.source_nodes, key=lambda x: x.score)
+                logger.debug(f"Meilleure source trouvée: {best_source.node.metadata.get('source', 'unknown')}")
+                logger.debug(f"Score de pertinence: {best_source.score * 100:.1f}%")
+            else:
+                logger.debug("Aucune source trouvée dans la réponse")
+            
+            # Pour détecter et supprimer la première citation
+            first_citation_found = False
+            buffer = ""
+            
+            # Traiter la réponse en streaming
+            for token in streaming_response.response_gen:
+                buffer += token
+                
+                # Si on n'a pas encore trouvé la première citation
+                if not first_citation_found:
+                    # Vérifier si le buffer contient une citation
+                    match = re.search(r'\(source : [^)]+\)', buffer)
+                    if match:
+                        # Supprimer la première citation
+                        buffer = re.sub(r'\(source : [^)]+\)', '', buffer, count=1)
+                        first_citation_found = True
+                        # Envoyer le buffer nettoyé
+                        for char in buffer:
+                            yield f"data: {json.dumps({'token': char})}\n\n"
+                        buffer = ""
+                    elif len(buffer) > 100:  # Si le buffer est assez long et pas de citation
+                        # Envoyer le début du buffer
+                        yield f"data: {json.dumps({'token': buffer[0]})}\n\n"
+                        buffer = buffer[1:]
+                else:
+                    # Une fois la première citation trouvée, streaming normal
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+            
+            # Envoyer le reste du buffer s'il en reste
+            if buffer:
+                for char in buffer:
+                    yield f"data: {json.dumps({'token': char})}\n\n"
+            
+            # Ajouter notre propre citation si pertinent
+            if best_source and best_source.score > 0.5:
+                filename = best_source.node.metadata.get('source', 'unknown').replace('data/', '')
+                source_text = f" (source : {filename})"
+                
+                for char in source_text:
+                    yield f"data: {json.dumps({'token': char})}\n\n"
+                
+                yield f"data: {json.dumps({'source_metadata': {
+                    'file': filename,
+                    'text': best_source.node.text,
+                    'score': float(best_source.score),
+                    'view_url': f"/api/folder/view/{filename}"
+                }})}\n\n"
+            
+            yield f"data: {json.dumps({'end': True})}\n\n"
+        
+        return StreamingResponse(
+            generate_response(),
+            media_type="text/event-stream"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
