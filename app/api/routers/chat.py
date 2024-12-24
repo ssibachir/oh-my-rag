@@ -55,14 +55,11 @@ async def chat_request(request: ChatRequest):
         Retourne un message d'erreur si une exception est levée lors du traitement.
     """
     try:
-        # Obtenir le dernier message de l'utilisateur
-        last_message = request.messages[-1].content
+        # Log pour debug
+        print("Messages reçus:", request.messages)
         
-        # Convertir les messages pour LlamaIndex
-        history_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in request.messages[:-1]
-        ]
+        # Obtenir le dernier message
+        last_message = request.messages[-1].content
         
         # Initialiser le chat engine
         chat_engine = get_chat_engine()
@@ -70,21 +67,27 @@ async def chat_request(request: ChatRequest):
         # Obtenir la réponse
         response = await chat_engine.achat(
             last_message,
-            history_messages
+            []  # Pour l'instant, on n'utilise pas l'historique
         )
         
+        # Retourner la réponse avec les sources
         return {
             "response": response.response,
             "source_nodes": [
                 {
                     "text": node.node.text,
-                    "metadata": node.node.metadata
+                    "metadata": {
+                        "source": node.node.metadata.get('source', ''),
+                        "view_url": f"/api/folder/view/{node.node.metadata.get('source', '').replace('data/', '')}",
+                        "score": float(node.score) if hasattr(node, 'score') else 0
+                    }
                 }
-                for node in response.source_nodes
-            ] if response.source_nodes else []
+                for node in (response.source_nodes or [])
+            ]
         }
         
     except Exception as e:
+        print("Erreur:", str(e))  # Log pour debug
         return {"response": f"Error: {str(e)}"}
 
 @chat_router.post("/chat")
