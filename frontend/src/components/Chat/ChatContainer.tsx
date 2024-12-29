@@ -213,19 +213,13 @@ export default function ChatContainer() {
         }
     };
 
-    // Gestionnaire de sélection de conversation
-    const handleConversationSelect = (conversationId: string) => {
-        setCurrentConversationId(conversationId);
-        // Optionnel : charger les messages de cette conversation
-        loadConversationMessages(conversationId);
-    };
-
     // Fonction pour charger les messages d'une conversation
     const loadConversationMessages = async (conversationId: string) => {
         try {
+            const token = localStorage.getItem('token');
             const response = await fetch(`http://localhost:8000/api/chat/history?conversation_id=${conversationId}`, {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
 
@@ -234,10 +228,27 @@ export default function ChatContainer() {
             }
 
             const data = await response.json();
-            setMessages(data); // Mettre à jour les messages avec l'historique
+            console.log("Messages chargés:", data); // Debug
+
+            if (Array.isArray(data)) {
+                setMessages(data);
+                setCurrentConversationId(conversationId);
+            } else {
+                console.error("Format de données invalide:", data);
+            }
         } catch (error) {
-            console.error('Erreur:', error);
+            console.error('Erreur lors du chargement des messages:', error);
+            setMessages([{
+                role: 'assistant',
+                content: "Erreur lors du chargement de la conversation. Veuillez réessayer."
+            }]);
         }
+    };
+
+    // Gestionnaire de sélection de conversation
+    const handleConversationSelect = async (conversationId: string) => {
+        setCurrentConversationId(conversationId);
+        await loadConversationMessages(conversationId);
     };
 
     // Afficher le formulaire de connexion/inscription si non authentifié
