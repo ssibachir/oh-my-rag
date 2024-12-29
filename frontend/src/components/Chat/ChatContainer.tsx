@@ -5,6 +5,7 @@ import { Message, Source, ChatResponse } from '@/types/chat';
 import LoginForm from '../Auth/LoginForm';
 import RegisterForm from '../Auth/RegisterForm';
 import LogoutButton from '../Auth/LogoutButton';
+import Sidebar from './Sidebar';
 
 interface ChatMessage extends Message {
     sources?: Source[];
@@ -18,6 +19,7 @@ export default function ChatContainer() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [showRegister, setShowRegister] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     
     // Référence pour le scroll automatique
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -210,6 +212,33 @@ export default function ChatContainer() {
         }
     };
 
+    // Gestionnaire de sélection de conversation
+    const handleConversationSelect = (conversationId: string) => {
+        setCurrentConversationId(conversationId);
+        // Optionnel : charger les messages de cette conversation
+        loadConversationMessages(conversationId);
+    };
+
+    // Fonction pour charger les messages d'une conversation
+    const loadConversationMessages = async (conversationId: string) => {
+        try {
+            const response = await fetch(`http://localhost:8000/api/chat/history?conversation_id=${conversationId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erreur lors du chargement des messages');
+            }
+
+            const data = await response.json();
+            setMessages(data); // Mettre à jour les messages avec l'historique
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    };
+
     // Afficher le formulaire de connexion/inscription si non authentifié
     if (!isAuthenticated) {
         if (showRegister) {
@@ -232,76 +261,84 @@ export default function ChatContainer() {
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-100">
-            <div className="bg-white shadow p-4 flex justify-between items-center">
-                <h1 className="text-xl font-bold">Assistant IA</h1>
-                <div className="flex gap-4">
-                    <button
-                        onClick={startNewConversation}
-                        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                    >
-                        Nouvelle conversation
-                    </button>
-                    <LogoutButton onLogout={() => setIsAuthenticated(false)} />
-                </div>
-            </div>
+        <div className="flex h-screen">
+            {isAuthenticated && (
+                <Sidebar onConversationSelect={handleConversationSelect} />
+            )}
+            
+            <div className="flex-1 flex flex-col">
+                <div className="flex flex-col h-screen bg-gray-100">
+                    <div className="bg-white shadow p-4 flex justify-between items-center">
+                        <h1 className="text-xl font-bold">Assistant IA</h1>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={startNewConversation}
+                                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                            >
+                                Nouvelle conversation
+                            </button>
+                            <LogoutButton onLogout={() => setIsAuthenticated(false)} />
+                        </div>
+                    </div>
 
-            {/* Zone des messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map((message, index) => (
-                    <div
-                        key={index}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div className="max-w-[80%]">
+                    {/* Zone des messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {messages.map((message, index) => (
                             <div
-                                className={`p-4 rounded-lg ${
-                                    message.role === 'user'
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-white shadow-md'
+                                key={index}
+                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                            >
+                                <div className="max-w-[80%]">
+                                    <div
+                                        className={`p-4 rounded-lg ${
+                                            message.role === 'user'
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-white shadow-md'
+                                        }`}
+                                    >
+                                        {message.role === 'assistant' 
+                                            ? formatMessageWithSource(message.content, message.sources)
+                                            : message.content
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-gray-200 p-4 rounded-lg animate-pulse">
+                                    En train d'écrire...
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Zone de saisie */}
+                    <div className="bg-white p-4 shadow-lg">
+                        <div className="max-w-4xl mx-auto flex gap-4">
+                            <input
+                                type="text"
+                                value={currentMessage}
+                                onChange={(e) => setCurrentMessage(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(currentMessage)}
+                                placeholder="Tapez votre message..."
+                                className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                disabled={isLoading}
+                            />
+                            <button
+                                onClick={() => sendMessage(currentMessage)}
+                                disabled={isLoading}
+                                className={`px-6 py-2 rounded-lg font-medium ${
+                                    isLoading
+                                        ? 'bg-gray-300 cursor-not-allowed'
+                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
                                 }`}
                             >
-                                {message.role === 'assistant' 
-                                    ? formatMessageWithSource(message.content, message.sources)
-                                    : message.content
-                                }
-                            </div>
+                                Envoyer
+                            </button>
                         </div>
                     </div>
-                ))}
-                {isLoading && (
-                    <div className="flex justify-start">
-                        <div className="bg-gray-200 p-4 rounded-lg animate-pulse">
-                            En train d'écrire...
-                        </div>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Zone de saisie */}
-            <div className="bg-white p-4 shadow-lg">
-                <div className="max-w-4xl mx-auto flex gap-4">
-                    <input
-                        type="text"
-                        value={currentMessage}
-                        onChange={(e) => setCurrentMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(currentMessage)}
-                        placeholder="Tapez votre message..."
-                        className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={isLoading}
-                    />
-                    <button
-                        onClick={() => sendMessage(currentMessage)}
-                        disabled={isLoading}
-                        className={`px-6 py-2 rounded-lg font-medium ${
-                            isLoading
-                                ? 'bg-gray-300 cursor-not-allowed'
-                                : 'bg-blue-500 hover:bg-blue-600 text-white'
-                        }`}
-                    >
-                        Envoyer
-                    </button>
                 </div>
             </div>
         </div>

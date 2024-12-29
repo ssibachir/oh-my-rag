@@ -100,7 +100,7 @@ async def chat_request(request: ChatRequest, current_user: User = Depends(get_cu
     try:
         logger.info(f"Nouvelle requête de chat de l'utilisateur: {current_user.id}")
         
-        # Cr��er le message utilisateur
+        # Créer le message utilisateur
         user_message = {
             "conversation_id": request.conversation_id,
             "user_id": str(current_user.id),
@@ -144,18 +144,20 @@ async def chat_request(request: ChatRequest, current_user: User = Depends(get_cu
 
 @chat_router.post("/chat/conversation")
 async def create_conversation(current_user: User = Depends(get_current_user)):
+    """
+    Crée une nouvelle conversation pour l'utilisateur.
+    """
     try:
-        # Créer une nouvelle conversation
         conversation_data = {
             "user_id": str(current_user.id),
             "created_at": datetime.utcnow().isoformat()
         }
         
-        # Utiliser la méthode synchrone de Supabase
-        response = supabase.client.table('conversations')\
+        # Utiliser from_ au lieu de table
+        response = supabase.from_('conversations')\
             .insert(conversation_data)\
             .execute()
-        
+            
         if not response.data:
             raise HTTPException(
                 status_code=500,
@@ -166,10 +168,7 @@ async def create_conversation(current_user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.error(f"Erreur lors de la création de la conversation: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def get_or_create_user(email: str) -> str:
     """Récupère ou crée un utilisateur dans la table users."""
@@ -198,3 +197,46 @@ async def get_or_create_user(email: str) -> str:
     except Exception as e:
         logger.error(f"Erreur get_or_create_user: {str(e)}")
         raise e
+    
+@chat_router.get("/conversations")
+async def get_user_conversations(current_user: User = Depends(get_current_user)):
+    """
+    Récupère toutes les conversations d'un utilisateur.
+    
+    Args:
+        current_user: L'utilisateur authentifié actuel
+    
+    Returns:
+        list: Liste des conversations de l'utilisateur
+    """
+    try:
+        # Log pour le débogage
+        logger.debug(f"Récupération des conversations pour l'utilisateur: {current_user.id}")
+        
+        # Utiliser from_ au lieu de table
+        response = supabase.from_('conversations')\
+            .select('*')\
+            .eq('user_id', str(current_user.id))\
+            .order('created_at', desc=True)\
+            .execute()
+            
+        logger.debug(f"Réponse de Supabase: {response}")
+        
+        if not response.data:
+            logger.info(f"Aucune conversation trouvée pour l'utilisateur {current_user.id}")
+            return []
+            
+        # Formater les conversations pour le frontend
+        conversations = [{
+            'id': conv['id'],
+            'created_at': conv['created_at']
+        } for conv in response.data]
+        
+        return conversations
+            
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des conversations: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de la récupération des conversations: {str(e)}"
+        )
