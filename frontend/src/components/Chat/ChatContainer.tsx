@@ -6,6 +6,7 @@ import LoginForm from '../Auth/LoginForm';
 import RegisterForm from '../Auth/RegisterForm';
 import LogoutButton from '../Auth/LogoutButton';
 import Sidebar from './Sidebar';
+import { motion } from 'framer-motion';
 
 interface ChatMessage extends Message {
     sources?: Source[];
@@ -147,7 +148,7 @@ export default function ChatContainer() {
                 },
                 body: JSON.stringify({
                     message: message,
-                    conversation_id: conversationId
+                    conversation_id: currentConversationId || conversationId
                 })
             });
 
@@ -261,82 +262,109 @@ export default function ChatContainer() {
     }
 
     return (
-        <div className="flex h-screen">
+        <div className="flex h-screen bg-[#111111]">
             {isAuthenticated && (
                 <Sidebar onConversationSelect={handleConversationSelect} />
             )}
             
             <div className="flex-1 flex flex-col">
-                <div className="flex flex-col h-screen bg-gray-100">
-                    <div className="bg-white shadow p-4 flex justify-between items-center">
-                        <h1 className="text-xl font-bold">Assistant IA</h1>
+                <div className="flex flex-col h-screen">
+                    <div className="bg-gradient-to-r from-[#1a1a1a] to-[#2a2a2a] p-4 flex justify-between items-center">
+                        <h1 className="text-xl font-bold text-white">Assistant IA</h1>
                         <div className="flex gap-4">
-                            <button
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
                                 onClick={startNewConversation}
-                                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                                className="bg-[#2a2a2a] text-white px-4 py-2 rounded-lg hover:bg-[#3a3a3a] transition-all duration-200"
                             >
                                 Nouvelle conversation
-                            </button>
+                            </motion.button>
                             <LogoutButton onLogout={() => setIsAuthenticated(false)} />
                         </div>
                     </div>
 
-                    {/* Zone des messages */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.map((message, index) => (
-                            <div
-                                key={index}
-                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className="max-w-[80%]">
-                                    <div
-                                        className={`p-4 rounded-lg ${
-                                            message.role === 'user'
-                                                ? 'bg-blue-500 text-white'
-                                                : 'bg-white shadow-md'
-                                        }`}
-                                    >
-                                        {message.role === 'assistant' 
-                                            ? formatMessageWithSource(message.content, message.sources)
-                                            : message.content
-                                        }
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#111111]">
+                        {messages.length <= 1 ? (
+                            // Message de bienvenue avec logo
+                            <div className="flex justify-center items-center h-full">
+                                <motion.div
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="text-center"
+                                >
+                                    <div className="w-32 h-32 mx-auto mb-8 relative">
+                                        <div className="absolute inset-0 bg-blue-500 opacity-20 rounded-full animate-pulse"></div>
+                                        <div className="relative z-10 w-full h-full rounded-full border-2 border-blue-500 flex items-center justify-center">
+                                            <span className="text-2xl text-white">AI</span>
+                                        </div>
                                     </div>
-                                </div>
+                                    <h2 className="text-xl text-white mb-4">Comment puis-je vous aider aujourd'hui ?</h2>
+                                </motion.div>
                             </div>
-                        ))}
+                        ) : (
+                            // Messages de la conversation
+                            <div className="space-y-4">
+                                {messages.map((message, index) => (
+                                    <motion.div
+                                        key={index}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div className="max-w-[80%]">
+                                            <div className={`p-4 rounded-lg ${
+                                                message.role === 'user'
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-[#2a2a2a] text-white'
+                                            }`}>
+                                                {message.role === 'assistant' 
+                                                    ? formatMessageWithSource(message.content, message.sources)
+                                                    : message.content
+                                                }
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        )}
+
                         {isLoading && (
-                            <div className="flex justify-start">
-                                <div className="bg-gray-200 p-4 rounded-lg animate-pulse">
-                                    En train d'écrire...
+                            <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="flex justify-start"
+                            >
+                                <div className="bg-[#2a2a2a] p-4 rounded-lg text-white flex items-center space-x-2">
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
                                 </div>
-                            </div>
+                            </motion.div>
                         )}
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Zone de saisie */}
-                    <div className="bg-white p-4 shadow-lg">
+                    <div className="bg-[#1a1a1a] p-6 border-t border-[#2a2a2a]">
                         <div className="max-w-4xl mx-auto flex gap-4">
-                            <input
+                            <motion.input
+                                whileFocus={{ scale: 1.01 }}
                                 type="text"
                                 value={currentMessage}
                                 onChange={(e) => setCurrentMessage(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(currentMessage)}
                                 placeholder="Tapez votre message..."
-                                className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                disabled={isLoading}
+                                className="flex-1 p-4 bg-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                             />
-                            <button
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
                                 onClick={() => sendMessage(currentMessage)}
                                 disabled={isLoading}
-                                className={`px-6 py-2 rounded-lg font-medium ${
-                                    isLoading
-                                        ? 'bg-gray-300 cursor-not-allowed'
-                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                }`}
+                                className="px-6 py-4 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-all duration-200 disabled:opacity-50"
                             >
                                 Envoyer
-                            </button>
+                            </motion.button>
                         </div>
                     </div>
                 </div>
