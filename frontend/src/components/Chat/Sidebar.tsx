@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Conversation {
     id: string;
@@ -80,29 +80,53 @@ const Sidebar: React.FC<SidebarProps> = ({ onConversationSelect }) => {
     }
 
     return (
-        <div className="w-64 h-screen bg-gray-800 text-white p-4">
-            <button
+        <motion.div 
+            initial={{ x: -100, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            className="w-64 h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 shadow-xl"
+        >
+            <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={createNewConversation}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg mb-4 transition-all duration-200 shadow-lg"
             >
                 Nouvelle conversation
-            </button>
+            </motion.button>
 
             <div className="space-y-2">
-                {isLoading && <div>Chargement...</div>}
-                {error && <div className="text-red-500">{error}</div>}
-                
-                {conversations.map((conv) => (
-                    <div
-                        key={conv.id}
-                        onClick={() => onConversationSelect(conv.id)}
-                        className="cursor-pointer p-2 hover:bg-gray-700 rounded"
+                {isLoading && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center justify-center p-4"
                     >
-                        Conversation {conv.id.slice(0, 8)}...
-                    </div>
-                ))}
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    </motion.div>
+                )}
+                
+                <AnimatePresence>
+                    {conversations.map((conv, index) => (
+                        <motion.div
+                            key={conv.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ delay: index * 0.1 }}
+                            onClick={() => onConversationSelect(conv.id)}
+                            className="cursor-pointer p-3 hover:bg-gray-700 rounded-lg transition-all duration-200 backdrop-blur-sm bg-opacity-50 shadow-md"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                        >
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                <span>Conversation {conv.id.slice(0, 8)}...</span>
+                            </div>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
             </div>
-        </div>
+        </motion.div>
     );
 };
 
