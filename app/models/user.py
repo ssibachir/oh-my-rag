@@ -1,20 +1,20 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
+import uuid
 
 class UserBase(BaseModel):
-    email: EmailStr
+    email: str
     username: str
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    email: str
     password: str
+    username: str
 
 class User(UserBase):
-    id: str
+    id: uuid.UUID
     created_at: datetime
     
     class Config:
-        from_attributes = True
-
-class UserInDB(User):
-    hashed_password: str 
+        from_attributes = True 

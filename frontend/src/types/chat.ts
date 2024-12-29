@@ -10,12 +10,17 @@ export interface Message {
      * - 'user' : message envoyé par l'utilisateur
      * - 'assistant' : message envoyé par l'assistant IA
      */
-    role: 'user' | 'assistant';
+    role: string;
 
     /**
      * Le contenu textuel du message
      */
     content: string;
+
+    /**
+     * Les sources utilisées pour générer la réponse
+     */
+    sources?: Source[];
 }
 
 /**
@@ -34,16 +39,16 @@ export interface SourceMetadata {
      * Score de pertinence de la source
      */
     score: number;
+    /**
+     * Texte extrait de la source
+     */
+    text: string;
 }
 
 /**
  * Interface pour une source individuelle
  */
 export interface Source {
-    /**
-     * Texte extrait de la source
-     */
-    text: string;
     /**
      * Métadonnées de la source
      */
@@ -63,4 +68,9 @@ export interface ChatResponse {
      * Les sources utilisées pour générer la réponse
      */
     source_nodes: Source[];
+}
+
+export interface ChatRequest {
+    message: string;
+    conversation_id: string;
 } 

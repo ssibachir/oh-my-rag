@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Message, Source, ChatResponse } from '@/types/chat';
 import LoginForm from '../Auth/LoginForm';
 import RegisterForm from '../Auth/RegisterForm';
+import LogoutButton from '../Auth/LogoutButton';
 
 interface ChatMessage extends Message {
     sources?: Source[];
@@ -16,6 +17,7 @@ export default function ChatContainer() {
     const [isLoading, setIsLoading] = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [showRegister, setShowRegister] = useState(false);
+    const [conversationId, setConversationId] = useState<string | null>(null);
     
     // Référence pour le scroll automatique
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -41,8 +43,11 @@ export default function ChatContainer() {
     }, []);
 
     useEffect(() => {
+        // Vérifier si un token existe
         const token = localStorage.getItem('token');
-        if (token) {
+        if (!token) {
+            setIsAuthenticated(false);
+        } else {
             setIsAuthenticated(true);
             // Charger l'historique des messages
             loadChatHistory();
@@ -51,93 +56,84 @@ export default function ChatContainer() {
 
     const loadChatHistory = async () => {
         try {
+            const token = localStorage.getItem('token');
             const response = await fetch('http://localhost:8000/api/chat/history', {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
             if (response.ok) {
                 const history = await response.json();
                 setMessages(history);
+            } else if (response.status === 401) {
+                // Si le token est invalide, déconnectez l'utilisateur
+                setIsAuthenticated(false);
+                localStorage.removeItem('token');
             }
         } catch (error) {
             console.error('Erreur lors du chargement de l\'historique:', error);
         }
     };
 
-    const handleLogin = (token: string) => {
-        setIsAuthenticated(true);
-        loadChatHistory();
-    };
-
-    if (!isAuthenticated) {
-        if (showRegister) {
-            return (
-                <RegisterForm 
-                    onRegisterSuccess={() => setShowRegister(false)}
-                    switchToLogin={() => setShowRegister(false)}
-                />
-            );
-        }
-        return (
-            <LoginForm 
-                onLogin={handleLogin}
-                switchToRegister={() => setShowRegister(true)}
-            />
-        );
-    }
-
     // Fonction pour formater le message avec la source
     const formatMessageWithSource = (content: string, sources: Source[] | undefined) => {
         if (!sources?.length) return content;
 
-        // Trouver la meilleure source
-        const bestSource = sources.reduce((best, current) => 
-            (current.metadata.score > (best?.metadata.score || 0)) ? current : best
-        , sources[0]);
+        console.log("Sources reçues:", sources); // Debug
 
-        // N'ajouter la source que si le score est supérieur à 50%
-        if (bestSource && bestSource.metadata.score > 0.5) {
+        // Vérifier si les sources ont la bonne structure
+        if (!sources[0]?.metadata?.score) {
+            console.log("Sources mal formatées:", sources);
+            return content;
+        }
+
+        // Trouver la meilleure source
+        const bestSource = sources.reduce((best, current) => {
+            if (!best?.metadata?.score) return current;
+            if (!current?.metadata?.score) return best;
+            return current.metadata.score > best.metadata.score ? current : best;
+        }, sources[0]);
+
+        // N'ajouter la source que si le score est supérieur à 50% et si la source existe
+        if (bestSource?.metadata?.score > 0.5) {
             const sourceText = ` (source : ${bestSource.metadata.source.replace('data/', '')} - ${(bestSource.metadata.score * 100).toFixed(1)}%)`;
+            
             return (
                 <>
-                    {content.replace(/\(source : [^)]+\)/, '')}
-                    <a
-                        href={`http://localhost:8000${bestSource.metadata.view_url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:text-blue-700 underline ml-1"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            window.open(
-                                `http://localhost:8000${bestSource.metadata.view_url}`,
-                                '_blank',
-                                'noopener,noreferrer'
-                            );
-                        }}
-                    >
-                        {sourceText}
-                    </a>
+                    {content}
+                    {bestSource.metadata.view_url && (
+                        <a
+                            href={`http://localhost:8000${bestSource.metadata.view_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:text-blue-700 underline ml-1"
+                        >
+                            {sourceText}
+                        </a>
+                    )}
                 </>
             );
         }
 
-        return content.replace(/\(source : [^)]+\)/, '');
+        return content;
     };
 
     // Fonction pour envoyer un message
-    const sendMessage = async () => {
-        if (!currentMessage.trim()) return;
-
+    const sendMessage = async (message: string) => {
         try {
             setIsLoading(true);
-            // Créer le message utilisateur
+            const token = localStorage.getItem('token');
+            
+            if (!token) {
+                setIsAuthenticated(false);
+                throw new Error('Non authentifié');
+            }
+
+            // Ajouter le message de l'utilisateur
             const userMessage: ChatMessage = {
                 role: 'user',
-                content: currentMessage
+                content: message
             };
-            
-            // Ajouter le message à l'historique
             setMessages(prev => [...prev, userMessage]);
             setCurrentMessage('');
 
@@ -145,31 +141,33 @@ export default function ChatContainer() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    messages: [{
-                        role: userMessage.role,
-                        content: userMessage.content
-                    }]
+                    message: message,
+                    conversation_id: conversationId
                 })
             });
 
-            if (!response.ok) {
-                throw new Error(`Erreur HTTP: ${response.status}`);
+            if (response.status === 401) {
+                setIsAuthenticated(false);
+                localStorage.removeItem('token');
+                throw new Error('Session expirée');
             }
 
-            const data: ChatResponse = await response.json();
+            if (!response.ok) {
+                throw new Error('Erreur de communication');
+            }
+
+            const data = await response.json();
             
             // Ajouter la réponse de l'assistant
-            if (data.response) {
-                const assistantMessage: ChatMessage = {
-                    role: 'assistant',
-                    content: data.response,
-                    sources: data.source_nodes
-                };
-                console.log('Message assistant avec sources:', assistantMessage); // Pour debug
-                setMessages(prev => [...prev, assistantMessage]);
-            }
+            const assistantMessage: ChatMessage = {
+                role: 'assistant',
+                content: data.content,
+                sources: data.source_nodes
+            };
+            setMessages(prev => [...prev, assistantMessage]);
 
         } catch (error) {
             console.error('Erreur:', error);
@@ -182,11 +180,70 @@ export default function ChatContainer() {
         }
     };
 
+    // Au chargement initial, créer une nouvelle conversation
+    useEffect(() => {
+        if (isAuthenticated) {
+            startNewConversation();
+        }
+    }, [isAuthenticated]);
+
+    const startNewConversation = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:8000/api/chat/conversation', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                setConversationId(data.conversation_id);
+                setMessages([{
+                    role: 'assistant',
+                    content: 'Bonjour ! Je suis votre assistant. Comment puis-je vous aider aujourd\'hui ?'
+                }]);
+            }
+        } catch (error) {
+            console.error('Erreur lors de la création de la conversation:', error);
+        }
+    };
+
+    // Afficher le formulaire de connexion/inscription si non authentifié
+    if (!isAuthenticated) {
+        if (showRegister) {
+            return (
+                <RegisterForm 
+                    onRegisterSuccess={() => setShowRegister(false)}
+                    switchToLogin={() => setShowRegister(false)}
+                />
+            );
+        }
+        return (
+            <LoginForm 
+                onLogin={(token) => {
+                    localStorage.setItem('token', token);
+                    setIsAuthenticated(true);
+                }}
+                switchToRegister={() => setShowRegister(true)}
+            />
+        );
+    }
+
     return (
         <div className="flex flex-col h-screen bg-gray-100">
-            {/* Header */}
-            <div className="bg-white shadow p-4">
-                <h1 className="text-xl font-bold text-center">Assistant IA</h1>
+            <div className="bg-white shadow p-4 flex justify-between items-center">
+                <h1 className="text-xl font-bold">Assistant IA</h1>
+                <div className="flex gap-4">
+                    <button
+                        onClick={startNewConversation}
+                        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                    >
+                        Nouvelle conversation
+                    </button>
+                    <LogoutButton onLogout={() => setIsAuthenticated(false)} />
+                </div>
             </div>
 
             {/* Zone des messages */}
@@ -229,13 +286,13 @@ export default function ChatContainer() {
                         type="text"
                         value={currentMessage}
                         onChange={(e) => setCurrentMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
+                        onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(currentMessage)}
                         placeholder="Tapez votre message..."
                         className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         disabled={isLoading}
                     />
                     <button
-                        onClick={sendMessage}
+                        onClick={() => sendMessage(currentMessage)}
                         disabled={isLoading}
                         className={`px-6 py-2 rounded-lg font-medium ${
                             isLoading

@@ -21,7 +21,7 @@ export default function LoginForm({ onLogin, switchToRegister }: LoginFormProps)
 
         try {
             const formData = new FormData();
-            formData.append('email', email);
+            formData.append('username', email);
             formData.append('password', password);
 
             const response = await fetch('http://localhost:8000/api/auth/login', {
@@ -30,15 +30,14 @@ export default function LoginForm({ onLogin, switchToRegister }: LoginFormProps)
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Email ou mot de passe incorrect');
+                throw new Error('Erreur de connexion');
             }
 
             const data = await response.json();
             localStorage.setItem('token', data.access_token);
             onLogin(data.access_token);
         } catch (error) {
-            setError(error instanceof Error ? error.message : 'Une erreur est survenue');
+            setError('Erreur lors de la connexion');
         } finally {
             setIsLoading(false);
         }

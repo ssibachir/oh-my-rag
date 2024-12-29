@@ -30,14 +30,16 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
         setIsLoading(true);
 
         try {
-            const form = new FormData();
-            form.append('email', formData.email);
-            form.append('username', formData.username);
-            form.append('password', formData.password);
-
             const response = await fetch('http://localhost:8000/api/auth/register', {
                 method: 'POST',
-                body: form,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: formData.email,
+                    password: formData.password,
+                    username: formData.username
+                })
             });
 
             if (!response.ok) {
@@ -45,8 +47,12 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
                 throw new Error(errorData.detail || 'Erreur lors de l\'inscription');
             }
 
-            onRegisterSuccess();
+            alert('Inscription réussie ! Vous pouvez maintenant vous connecter.');
+            
+            switchToLogin();
+            
         } catch (error) {
+            console.error('Erreur:', error);
             setError(error instanceof Error ? error.message : 'Une erreur est survenue');
         } finally {
             setIsLoading(false);
@@ -71,7 +77,7 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData({...formData, email: e.target.value})}
-                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                             required
                         />
                     </div>
@@ -83,7 +89,7 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
                             type="text"
                             value={formData.username}
                             onChange={(e) => setFormData({...formData, username: e.target.value})}
-                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                             required
                         />
                     </div>
@@ -95,7 +101,7 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
                             type="password"
                             value={formData.password}
                             onChange={(e) => setFormData({...formData, password: e.target.value})}
-                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                             required
                         />
                     </div>
@@ -107,7 +113,7 @@ export default function RegisterForm({ onRegisterSuccess, switchToLogin }: Regis
                             type="password"
                             value={formData.confirmPassword}
                             onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                             required
                         />
                     </div>
