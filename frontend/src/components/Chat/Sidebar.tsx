@@ -56,6 +56,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onConversationSelect }) => {
         onConversationSelect(id);
     };
 
+    const createNewConversation = () => {
+        setSelectedId(null);
+        onConversationSelect('');
+    };
+
     if (!mounted) return null;
 
     return (
@@ -65,8 +70,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onConversationSelect }) => {
             className="w-80 h-screen bg-[#1a1a1a] text-white p-4 border-r border-[#2a2a2a] overflow-hidden"
         >
             <div className="space-y-4">
-                {/* En-tête */}
-                <div className="flex items-center justify-between mb-6">
+                {/* En-tête avec bouton nouvelle conversation */}
+                <div className="flex flex-col space-y-4 mb-6">
                     <motion.h2 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -74,6 +79,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onConversationSelect }) => {
                     >
                         Conversations
                     </motion.h2>
+                    <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={createNewConversation}
+                        className="w-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white py-2 px-4 rounded-lg transition-all duration-200"
+                    >
+                        + Nouvelle conversation
+                    </motion.button>
                 </div>
 
                 {/* Liste des conversations */}

@@ -132,6 +132,27 @@ export default function ChatContainer() {
                 throw new Error('Non authentifié');
             }
 
+            let activeConversationId = currentConversationId;
+
+            // Si pas de conversation active, en créer une nouvelle
+            if (!activeConversationId) {
+                const convResponse = await fetch('http://localhost:8000/api/chat/conversation', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (convResponse.ok) {
+                    const data = await convResponse.json();
+                    activeConversationId = data.conversation_id;
+                    setConversationId(data.conversation_id);
+                    setCurrentConversationId(data.conversation_id);
+                } else {
+                    throw new Error('Erreur lors de la création de la conversation');
+                }
+            }
+
             // Ajouter le message de l'utilisateur
             const userMessage: ChatMessage = {
                 role: 'user',
@@ -139,6 +160,11 @@ export default function ChatContainer() {
             };
             setMessages(prev => [...prev, userMessage]);
             setCurrentMessage('');
+
+            // S'assurer qu'on a un ID de conversation valide
+            if (!activeConversationId) {
+                throw new Error('ID de conversation non valide');
+            }
 
             const response = await fetch('http://localhost:8000/api/chat/request', {
                 method: 'POST',
@@ -148,7 +174,7 @@ export default function ChatContainer() {
                 },
                 body: JSON.stringify({
                     message: message,
-                    conversation_id: currentConversationId || conversationId
+                    conversation_id: activeConversationId
                 })
             });
 
@@ -186,7 +212,14 @@ export default function ChatContainer() {
     // Au chargement initial, créer une nouvelle conversation
     useEffect(() => {
         if (isAuthenticated) {
-            startNewConversation();
+            // Ne plus créer de conversation automatiquement
+            // startNewConversation();
+            
+            // À la place, juste afficher le message de bienvenue
+            setMessages([{
+                role: 'assistant',
+                content: 'Bonjour ! Je suis votre assistant. Comment puis-je vous aider aujourd\'hui ?'
+            }]);
         }
     }, [isAuthenticated]);
 
@@ -203,6 +236,8 @@ export default function ChatContainer() {
             if (response.ok) {
                 const data = await response.json();
                 setConversationId(data.conversation_id);
+                setCurrentConversationId(data.conversation_id);
+                // Réinitialiser les messages avec le message de bienvenue
                 setMessages([{
                     role: 'assistant',
                     content: 'Bonjour ! Je suis votre assistant. Comment puis-je vous aider aujourd\'hui ?'
@@ -247,8 +282,62 @@ export default function ChatContainer() {
 
     // Gestionnaire de sélection de conversation
     const handleConversationSelect = async (conversationId: string) => {
+        if (!conversationId) {
+            // Réinitialiser pour une nouvelle conversation
+            setCurrentConversationId(null);
+            setMessages([{
+                role: 'assistant',
+                content: 'Bonjour ! Je suis votre assistant. Comment puis-je vous aider aujourd\'hui ?'
+            }]);
+            return;
+        }
+
+        // Charger une conversation existante
         setCurrentConversationId(conversationId);
         await loadConversationMessages(conversationId);
+    };
+
+    // Ajouter la fonction handleFileUpload
+    const handleFileUpload = async (file: File) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const token = localStorage.getItem('token');
+            
+            console.log("Début de l'upload du fichier:", file.name);
+
+            const response = await fetch('http://localhost:8000/api/folder/upload', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            console.log("Réponse du serveur:", response.status);
+
+            if (!response.ok) {
+                const errorData = await response.text();
+                console.error("Erreur détaillée:", errorData);
+                throw new Error(`Erreur lors de l'upload: ${errorData}`);
+            }
+
+            const data = await response.json();
+            console.log("Données reçues:", data);
+
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `Le fichier ${data.filename} a été uploadé avec succès et est en cours d'indexation.`
+            }]);
+
+        } catch (error) {
+            console.error('Erreur upload:', error);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: "Désolé, une erreur s'est produite lors de l'upload du fichier."
+            }]);
+        }
     };
 
     // Afficher le formulaire de connexion/inscription si non authentifié
@@ -283,20 +372,12 @@ export default function ChatContainer() {
                     <div className="bg-gradient-to-r from-[#1a1a1a] to-[#2a2a2a] p-4 flex justify-between items-center">
                         <h1 className="text-xl font-bold text-white">Assistant IA</h1>
                         <div className="flex gap-4">
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={startNewConversation}
-                                className="bg-[#2a2a2a] text-white px-4 py-2 rounded-lg hover:bg-[#3a3a3a] transition-all duration-200"
-                            >
-                                Nouvelle conversation
-                            </motion.button>
                             <LogoutButton onLogout={() => setIsAuthenticated(false)} />
                         </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#111111]">
-                        {messages.length <= 1 ? (
+                        {!currentConversationId ? (
                             // Message de bienvenue avec logo
                             <div className="flex justify-center items-center h-full">
                                 <motion.div
@@ -358,6 +439,38 @@ export default function ChatContainer() {
 
                     <div className="bg-[#1a1a1a] p-6 border-t border-[#2a2a2a]">
                         <div className="max-w-4xl mx-auto flex gap-4">
+                            <motion.label
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="p-4 rounded-lg bg-[#2a2a2a] text-white cursor-pointer hover:bg-[#3a3a3a] transition-all duration-200"
+                            >
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            handleFileUpload(file);
+                                        }
+                                    }}
+                                    accept=".pdf,.txt,.docx,.csv,.xlsx" // Limiter aux extensions supportées
+                                />
+                                <svg 
+                                    xmlns="http://www.w3.org/2000/svg" 
+                                    className="h-6 w-6" 
+                                    fill="none" 
+                                    viewBox="0 0 24 24" 
+                                    stroke="currentColor"
+                                >
+                                    <path 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round" 
+                                        strokeWidth={2} 
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" 
+                                    />
+                                </svg>
+                            </motion.label>
+
                             <motion.input
                                 whileFocus={{ scale: 1.01 }}
                                 type="text"
@@ -367,6 +480,7 @@ export default function ChatContainer() {
                                 placeholder="Tapez votre message..."
                                 className="flex-1 p-4 bg-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                             />
+
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
