@@ -14,8 +14,12 @@ from app.api.auth import get_current_user
 from app.db.supabase_client import supabase
 from datetime import datetime
 import asyncio
+from app.observability import create_chat_span, end_chat_span
+from opentelemetry import trace
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
+
 chat_router = APIRouter()
 
 class Message(BaseModel):
@@ -29,25 +33,23 @@ class ChatRequest(BaseModel):
 @chat_router.get("/chat/history")
 async def get_chat_history(conversation_id: str, current_user: User = Depends(get_current_user)):
     try:
-        # Récupérer d'abord l'ID de notre table users
-        user_response = await supabase.select(
-            'users',
-            {'email': f'eq.{current_user.email}'}
-        )
-        if not user_response:
-            raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-            
-        user_id = user_response[0]['id']
+        logger.info(f"Récupération de l'historique pour la conversation: {conversation_id}")
         
-        # Utiliser cet ID pour récupérer l'historique
-        response = await supabase.select(
-            'chat_messages',
-            {
-                'user_id': f'eq.{user_id}',  # Utiliser l'ID de notre table users
-                'conversation_id': f'eq.{conversation_id}'
-            }
-        )
-        return response
+        # Récupérer les messages de la conversation
+        messages_response = supabase.client.table('chat_messages')\
+            .select('*')\
+            .eq('conversation_id', conversation_id)\
+            .eq('user_id', str(current_user.id))\
+            .order('created_at', desc=False)\
+            .execute()
+            
+        logger.info(f"Messages récupérés: {messages_response}")
+        
+        if not messages_response.data:
+            return []
+            
+        return messages_response.data
+        
     except Exception as e:
         logger.error(f"Erreur lors de la récupération de l'historique: {str(e)}")
         raise HTTPException(status_code=500, detail="Erreur serveur")
@@ -97,6 +99,9 @@ async def get_chat_response(message: str, conversation_id: str):
 
 @chat_router.post("/chat/request")
 async def chat_request(request: ChatRequest, current_user: User = Depends(get_current_user)):
+    # Créer un span pour cette interaction
+    span = create_chat_span(tracer, request.conversation_id, request.message)
+    
     try:
         logger.info(f"Nouvelle requête de chat de l'utilisateur: {current_user.id}")
         
@@ -136,9 +141,14 @@ async def chat_request(request: ChatRequest, current_user: User = Depends(get_cu
             
         logger.info(f"Message assistant inséré: {assistant_message_response}")
 
+        # Marquer le span comme réussi
+        end_chat_span(span, True, response=response["content"])
+        
         return response
 
     except Exception as e:
+        # Marquer le span comme échoué
+        end_chat_span(span, False, error=str(e))
         logger.error(f"Erreur lors du traitement de la requête: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

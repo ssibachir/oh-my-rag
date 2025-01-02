@@ -82,40 +82,35 @@ export default function ChatContainer() {
     const formatMessageWithSource = (content: string, sources: Source[] | undefined) => {
         if (!sources?.length) return content;
 
-        console.log("Sources reçues:", sources); // Debug
+        console.log("Sources reçues détaillées:", JSON.stringify(sources, null, 2)); // Log détaillé
 
         // Vérifier si les sources ont la bonne structure
-        if (!sources[0]?.metadata?.score) {
-            console.log("Sources mal formatées:", sources);
-            return content;
-        }
+        const bestSource = sources[0];
+        console.log("Meilleure source:", bestSource); // Log de la source
 
-        // Trouver la meilleure source
-        const bestSource = sources.reduce((best, current) => {
-            if (!best?.metadata?.score) return current;
-            if (!current?.metadata?.score) return best;
-            return current.metadata.score > best.metadata.score ? current : best;
-        }, sources[0]);
+        if (bestSource && bestSource.metadata) {
+            const fileName = bestSource.metadata.file_name || 
+                            bestSource.metadata.source?.replace('data/', '') ||
+                            'document';
+            const score = bestSource.metadata.score || 0;
 
-        // N'ajouter la source que si le score est supérieur à 50% et si la source existe
-        if (bestSource?.metadata?.score > 0.5) {
-            const sourceText = ` (source : ${bestSource.metadata.source.replace('data/', '')} - ${(bestSource.metadata.score * 100).toFixed(1)}%)`;
-            
-            return (
-                <>
-                    {content}
-                    {bestSource.metadata.view_url && (
+            if (score > 0.5) {
+                const sourceText = ` (source : ${fileName} - ${(score * 100).toFixed(1)}%)`;
+                
+                return (
+                    <>
+                        {content}
                         <a
-                            href={`http://localhost:8000${bestSource.metadata.view_url}`}
+                            href={`http://localhost:8000/api/folder/view/${fileName}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-500 hover:text-blue-700 underline ml-1"
                         >
                             {sourceText}
                         </a>
-                    )}
-                </>
-            );
+                    </>
+                );
+            }
         }
 
         return content;

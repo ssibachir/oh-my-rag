@@ -27,22 +27,9 @@ export interface Message {
  * Interface pour les métadonnées des sources
  */
 export interface SourceMetadata {
-    /**
-     * Nom du fichier source
-     */
-    source: string;
-    /**
-     * URL pour visualiser la source
-     */
-    view_url: string;
-    /**
-     * Score de pertinence de la source
-     */
-    score: number;
-    /**
-     * Texte extrait de la source
-     */
-    text: string;
+    file_name?: string;
+    source?: string;
+    score?: number;
 }
 
 /**

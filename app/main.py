@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routers.auth import auth_router
 from app.api.routers.chat import chat_router
 from app.api.routers.files import files_router
+from app.api.routers.folder import folder_router
 
 app = FastAPI()
 
@@ -20,7 +21,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(chat_router, prefix="/api")
 app.include_router(files_router, prefix="/api")
-
+app.include_router(folder_router, prefix="/api/folder")
 # Pour le débogage
 @app.options("/{full_path:path}")
 async def options_route(full_path: str):

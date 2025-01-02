@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
 import os
 from typing import List, Set
 from pydantic import BaseModel
@@ -7,6 +7,8 @@ from app.engine.generate import process_documents
 from app.engine.vectordb import get_vector_store, get_collection_stats
 import logging
 from fastapi.responses import FileResponse
+from app.api.auth import get_current_user
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +107,11 @@ async def index_new_file(file_path: str):
     except Exception as e:
         logger.error(f"Erreur lors de l'indexation du fichier {file_path}: {str(e)}", exc_info=True)
 
-@folder_router.post("/folder/upload", status_code=201)
+@folder_router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
+    current_user: User = Depends(get_current_user)  # Ajouter l'authentification
 ):
     """
     Upload un fichier dans le dossier data/ et lance son indexation.
@@ -132,18 +135,13 @@ async def upload_file(
         # Chemin complet du fichier
         file_path = os.path.join(data_dir, file.filename)
         
-        try:
-            # Sauvegarder le fichier
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Erreur lors de l'écriture du fichier: {str(e)}"
-            )
+        # Sauvegarder le fichier
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
         
         # Ajouter la tâche d'indexation en arrière-plan
-        background_tasks.add_task(index_new_file, file_path)
+        if background_tasks:
+            background_tasks.add_task(index_new_file, file_path)
         
         return {
             "message": f"Fichier {file.filename} uploadé avec succès et en cours d'indexation",
