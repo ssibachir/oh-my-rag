@@ -21,9 +21,17 @@ aiostream = "^0.5.2"
 cachetools = "^5.3.3"
 llama-index = "^0.12.1"
 rich = "^13.9.4"
-llama-index-agent-openai = "^0.4.0"
+llama-index-agent-openai = "0.4.0"
 llama-index-tools-requests = "^0.3.0"
-llama-index-llms-openai = "^0.1.1"
+llama-index-llms-openai = "0.3.0"
+python-jose = "^3.3.0"
+cryptography = "^41.0.0"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+bcrypt = "^4.0.1"
+python-multipart = "^0.0.9"
+email-validator = "^2.1.0"
+httpx = ">=0.26.0,<0.28.0"
+supabase = "^2.10.0"
 
 [tool.poetry.dependencies.uvicorn]
 extras = [ "standard" ]
@@ -40,9 +48,6 @@ version = "^0.2.14"
 
 [tool.poetry.dependencies.markdown]
 version = "^3.7"
-
-[tool.poetry.dependencies.e2b_code_interpreter]
-version = "0.0.11b38"
 
 [tool.poetry.dependencies.llama-index-tools-openapi]
 version = "*"
