@@ -21,6 +21,8 @@ export default function ChatContainer() {
     const [showRegister, setShowRegister] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
     
     // Référence pour le scroll automatique
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,34 +82,40 @@ export default function ChatContainer() {
 
     // Fonction pour formater le message avec la source
     const formatMessageWithSource = (content: string, sources: Source[] | undefined) => {
-        if (!sources?.length) return content;
+        if (!sources?.length) {
+            console.log("Pas de sources disponibles");
+            return content;
+        }
 
-        console.log("Sources reçues détaillées:", JSON.stringify(sources, null, 2)); // Log détaillé
+        console.log("Sources reçues:", sources); // Debug log
 
-        // Vérifier si les sources ont la bonne structure
         const bestSource = sources[0];
-        console.log("Meilleure source:", bestSource); // Log de la source
-
         if (bestSource && bestSource.metadata) {
             const fileName = bestSource.metadata.file_name || 
                             bestSource.metadata.source?.replace('data/', '') ||
                             'document';
             const score = bestSource.metadata.score || 0;
 
+            console.log("Fichier:", fileName, "Score:", score); // Debug log
+
             if (score > 0.5) {
                 const sourceText = ` (source : ${fileName} - ${(score * 100).toFixed(1)}%)`;
+                const viewUrl = `http://localhost:8000/api/folder/view/${encodeURIComponent(fileName)}`;
+                
+                console.log("URL générée:", viewUrl); // Debug log
                 
                 return (
                     <>
                         {content}
-                        <a
-                            href={`http://localhost:8000/api/folder/view/${fileName}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => {
+                                setPdfUrl(viewUrl);
+                                setShowPdfViewer(true);
+                            }}
                             className="text-blue-500 hover:text-blue-700 underline ml-1"
                         >
                             {sourceText}
-                        </a>
+                        </button>
                     </>
                 );
             }
@@ -156,11 +164,6 @@ export default function ChatContainer() {
             setMessages(prev => [...prev, userMessage]);
             setCurrentMessage('');
 
-            // S'assurer qu'on a un ID de conversation valide
-            if (!activeConversationId) {
-                throw new Error('ID de conversation non valide');
-            }
-
             const response = await fetch('http://localhost:8000/api/chat/request', {
                 method: 'POST',
                 headers: {
@@ -173,25 +176,60 @@ export default function ChatContainer() {
                 })
             });
 
-            if (response.status === 401) {
-                setIsAuthenticated(false);
-                localStorage.removeItem('token');
-                throw new Error('Session expirée');
-            }
-
             if (!response.ok) {
                 throw new Error('Erreur de communication');
             }
 
-            const data = await response.json();
-            
-            // Ajouter la réponse de l'assistant
-            const assistantMessage: ChatMessage = {
-                role: 'assistant',
-                content: data.content,
-                sources: data.source_nodes
-            };
-            setMessages(prev => [...prev, assistantMessage]);
+            // Lire le stream SSE
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let currentResponse = "";
+
+            if (reader) {
+                while (true) {
+                    const {value, done} = await reader.read();
+                    if (done) break;
+                    
+                    const text = decoder.decode(value);
+                    const lines = text.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonData = JSON.parse(line.slice(6));
+                                
+                                if (jsonData.content) {
+                                    currentResponse += jsonData.content;
+                                    // Mettre à jour le message en temps réel
+                                    setMessages(prev => {
+                                        const newMessages = [...prev];
+                                        if (newMessages[newMessages.length - 1]?.role === 'assistant') {
+                                            newMessages[newMessages.length - 1].content = currentResponse;
+                                        } else {
+                                            newMessages.push({
+                                                role: 'assistant',
+                                                content: currentResponse
+                                            });
+                                        }
+                                        return newMessages;
+                                    });
+                                } else if (jsonData.type === 'sources') {
+                                    // Ajouter les sources au dernier message
+                                    setMessages(prev => {
+                                        const newMessages = [...prev];
+                                        if (newMessages[newMessages.length - 1]?.role === 'assistant') {
+                                            newMessages[newMessages.length - 1].sources = jsonData.data;
+                                        }
+                                        return newMessages;
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Erreur parsing JSON:', e);
+                            }
+                        }
+                    }
+                }
+            }
 
         } catch (error) {
             console.error('Erreur:', error);
@@ -333,6 +371,34 @@ export default function ChatContainer() {
                 content: "Désolé, une erreur s'est produite lors de l'upload du fichier."
             }]);
         }
+    };
+
+    // Ajouter le composant PDF Viewer
+    const PdfViewer = ({ url, onClose }: { url: string; onClose: () => void }) => {
+        return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg w-full h-full max-w-4xl max-h-[90vh] flex flex-col">
+                    <div className="p-4 flex justify-between items-center border-b">
+                        <h2 className="text-lg font-semibold">Document Source</h2>
+                        <button
+                            onClick={onClose}
+                            className="text-gray-500 hover:text-gray-700"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div className="flex-1 p-4">
+                        <iframe
+                            src={url}
+                            className="w-full h-full rounded border"
+                            title="PDF Viewer"
+                        />
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     // Afficher le formulaire de connexion/inscription si non authentifié
@@ -489,6 +555,17 @@ export default function ChatContainer() {
                     </div>
                 </div>
             </div>
+            
+            {/* Ajouter le PDF Viewer */}
+            {showPdfViewer && pdfUrl && (
+                <PdfViewer
+                    url={pdfUrl}
+                    onClose={() => {
+                        setShowPdfViewer(false);
+                        setPdfUrl(null);
+                    }}
+                />
+            )}
         </div>
     );
 } 
