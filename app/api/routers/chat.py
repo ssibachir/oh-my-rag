@@ -16,6 +16,8 @@ from datetime import datetime
 import asyncio
 from app.observability import create_chat_span, end_chat_span
 from opentelemetry import trace
+from app.api.chat.events import EventCallbackHandler
+import os
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -115,42 +117,77 @@ async def chat_request(request: ChatRequest, current_user: User = Depends(get_cu
         }
         
         # Insérer le message utilisateur
-        user_message_response = supabase.client.table('chat_messages')\
-            .insert(user_message)\
-            .execute()
-            
-        logger.info(f"Message utilisateur inséré: {user_message_response}")
+        supabase.client.table('chat_messages').insert(user_message).execute()
 
-        # Obtenir la réponse de l'assistant
-        response = await get_chat_response(request.message, request.conversation_id)
-        logger.info(f"Réponse de l'assistant: {response}")  # Debug log
+        # Initialiser le gestionnaire d'événements
+        event_handler = EventCallbackHandler()
         
-        # Créer le message assistant avec la bonne clé 'content'
-        assistant_message = {
-            "conversation_id": request.conversation_id,
-            "user_id": str(current_user.id),
-            "content": response["content"],  # Utiliser response["content"] au lieu de response.content
-            "role": "assistant",
-            "created_at": datetime.utcnow().isoformat()
-        }
-        
-        # Insérer le message assistant
-        assistant_message_response = supabase.client.table('chat_messages')\
-            .insert(assistant_message)\
-            .execute()
-            
-        logger.info(f"Message assistant inséré: {assistant_message_response}")
+        # Obtenir la réponse avec streaming
+        chat_engine = get_chat_engine()
+        response = await chat_engine.astream_chat(request.message)
 
-        # Marquer le span comme réussi
-        end_chat_span(span, True, response=response["content"])
-        
-        return response
+        # Marquer le span comme réussi avant de commencer le streaming
+        end_chat_span(span, True)
+
+        return StreamingResponse(
+            content=stream_chat_response(
+                request=request,
+                event_handler=event_handler,
+                response=response,
+                current_user=current_user
+            ),
+            media_type="text/event-stream"
+        )
 
     except Exception as e:
         # Marquer le span comme échoué
         end_chat_span(span, False, error=str(e))
-        logger.error(f"Erreur lors du traitement de la requête: {str(e)}")
+        logger.error(f"Erreur: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def stream_chat_response(request, event_handler, response, current_user):
+    try:
+        final_response = ""
+        async for token in response.async_response_gen():
+            final_response += token
+            # Format SSE correct
+            yield f"data: {json.dumps({'content': token})}\n\n"
+
+        # Une fois le texte terminé, envoyer les sources
+        if hasattr(response, 'source_nodes'):
+            source_nodes = []
+            for node in response.source_nodes:
+                # S'assurer que le nom du fichier est correctement extrait
+                file_name = node.node.metadata.get('file_name')
+                if not file_name and 'source' in node.node.metadata:
+                    file_name = os.path.basename(node.node.metadata['source'])
+                
+                source_nodes.append({
+                    "metadata": {
+                        "file_name": file_name,
+                        "score": float(node.score) if node.score else 0,
+                        "source": node.node.metadata.get('source')
+                    }
+                })
+            
+            yield f"data: {json.dumps({'type': 'sources', 'data': source_nodes})}\n\n"
+
+        # Sauvegarder le message de l'assistant une fois complet
+        assistant_message = {
+            "conversation_id": request.conversation_id,
+            "user_id": str(current_user.id),
+            "content": final_response,
+            "role": "assistant",
+            "created_at": datetime.utcnow().isoformat()
+        }
+        supabase.client.table('chat_messages').insert(assistant_message).execute()
+
+    except Exception as e:
+        logger.error(f"Erreur streaming: {e}")
+        # Format SSE pour les erreurs
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        event_handler.is_done = True
 
 @chat_router.post("/chat/conversation")
 async def create_conversation(current_user: User = Depends(get_current_user)):

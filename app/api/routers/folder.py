@@ -9,6 +9,7 @@ import logging
 from fastapi.responses import FileResponse
 from app.api.auth import get_current_user
 from app.models.user import User
+from app.config import DATA_DIR  # Ajouter cet import
 
 logger = logging.getLogger(__name__)
 
@@ -194,37 +195,20 @@ async def debug_vectorstore():
         return {"error": str(e)}
 
 @folder_router.get("/folder/view/{filename}")
-async def view_file(filename: str):
-    """
-    Sert le fichier PDF pour la visualisation.
-    """
+async def view_file(filename: str, current_user: User = Depends(get_current_user)):
     try:
-        # Nettoyer le nom du fichier de tout chemin potentiel
-        clean_filename = os.path.basename(filename)
-        file_path = os.path.join("data", clean_filename)
-        
-        logger.info(f"Tentative d'accès au fichier: {file_path}")
-        
+        file_path = os.path.join(DATA_DIR, filename)
         if not os.path.exists(file_path):
-            logger.error(f"Fichier non trouvé: {file_path}")
-            raise HTTPException(status_code=404, detail=f"Fichier non trouvé: {clean_filename}")
-        
-        # Vérifier que c'est bien un PDF
-        if not clean_filename.lower().endswith('.pdf'):
-            logger.error(f"Format non supporté: {clean_filename}")
-            raise HTTPException(status_code=400, detail="Format de fichier non supporté")
-        
-        logger.info(f"Envoi du fichier PDF: {file_path}")
+            raise HTTPException(status_code=404, detail="Fichier non trouvé")
+            
         return FileResponse(
-            path=file_path,
+            file_path,
             media_type='application/pdf',
-            filename=clean_filename,
             headers={
-                "Content-Disposition": f"inline; filename={clean_filename}",
-                "Content-Type": "application/pdf"
+                'Content-Disposition': 'inline',
+                'filename': filename
             }
         )
     except Exception as e:
-        logger.error(f"Erreur lors de l'accès au fichier: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
